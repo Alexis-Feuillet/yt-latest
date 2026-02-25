@@ -1,11 +1,8 @@
-name: Update latest YouTube JSON
+name: Update latest YouTube URL
 
 on:
-  # Lance automatiquement toutes les 30 minutes
   schedule:
     - cron: "*/30 * * * *"
-
-  # Permet de le lancer à la main (bouton "Run workflow")
   workflow_dispatch:
 
 permissions:
@@ -16,44 +13,60 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Récupère le contenu du repo (obligatoire pour modifier/commit des fichiers)
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2) Télécharge le JSON depuis ton Apps Script
-      # IMPORTANT: -L suit les redirections Google (sinon tu récupères "Moved Temporarily" en HTML)
-      - name: Download latest.json from Apps Script
+      - name: Download JSON from Apps Script
         run: |
           set -e
-
           APPS_SCRIPT_URL="https://script.google.com/macros/s/AKfycbwir5H8_B9BmSouM26WWoh9sxTIQGy8tU8ZfWM7mVZT8aFWuQq8vilmweyh83IxBYx_eQ/exec"
-
           echo "Downloading from: $APPS_SCRIPT_URL"
-          curl -LfsS "$APPS_SCRIPT_URL" -o latest.json
+          curl -LfsS "$APPS_SCRIPT_URL" -o _raw.json
+          echo "Downloaded bytes:"
+          wc -c _raw.json
 
-          echo "Downloaded file size:"
-          wc -c latest.json
-
-      # 3) Vérifie que c'est bien du JSON (et pas une page HTML "Moved Temporarily")
-      - name: Validate JSON
+      - name: Validate + build minimal latest.json
         run: |
-          node -e "JSON.parse(require('fs').readFileSync('latest.json','utf8')); console.log('✅ JSON OK');"
+          node - <<'NODE'
+          const fs = require('fs');
 
-      # 4) Commit + push seulement si le fichier a changé
-      - name: Commit and push if changed
+          const raw = fs.readFileSync('_raw.json', 'utf8');
+          const data = JSON.parse(raw);
+
+          // On prend en priorité watchUrl, sinon on tente embedUrl, sinon videoId
+          let url = data.watchUrl || data.url || null;
+
+          if (!url && data.embedUrl) {
+            // Convertit embedUrl -> watchUrl (optionnel, mais plus "Systeme.io friendly")
+            const m = String(data.embedUrl).match(/\/embed\/([a-zA-Z0-9_-]{11})/);
+            if (m) url = `https://www.youtube.com/watch?v=${m[1]}`;
+          }
+
+          if (!url && data.videoId) {
+            url = `https://www.youtube.com/watch?v=${data.videoId}`;
+          }
+
+          if (!url) {
+            console.error('❌ Impossible de trouver watchUrl/embedUrl/videoId dans la réponse Apps Script');
+            process.exit(1);
+          }
+
+          const minimal = {
+            ok: true,
+            url,
+            updatedAt: new Date().toISOString()
+          };
+
+          fs.writeFileSync('latest.json', JSON.stringify(minimal, null, 2));
+          console.log('✅ latest.json written:', minimal);
+          NODE
+
+      - name: Commit and push (always)
         run: |
           set -e
-
-          # Configure l'identité du bot GitHub Actions
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Si rien n'a changé, on sort (évite des commits inutiles)
-          if git diff --quiet; then
-            echo "No changes to commit."
-            exit 0
-          fi
-
           git add latest.json
-          git commit -m "Auto update latest.json"
+          git commit -m "Auto update latest.json (url)" || echo "Nothing to commit"
           git push
