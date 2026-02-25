@@ -11,13 +11,11 @@
       padding: 0;
       background: transparent;
     }
-
     .wrap {
       position: relative;
       width: 100%;
       aspect-ratio: 16 / 9;
     }
-
     iframe {
       position: absolute;
       inset: 0;
@@ -29,25 +27,37 @@
 </head>
 
 <body>
-
   <div class="wrap" id="wrap"></div>
 
   <script>
-    const LATEST_JSON =
-      "https://alexis-feuillet.github.io/yt-latest/latest.json";
+    // Source du JSON (GitHub Pages)
+    const LATEST_JSON = "https://alexis-feuillet.github.io/yt-latest/latest.json";
 
+    // Refresh automatique (30 min)
     const REFRESH_MS = 30 * 60 * 1000;
+
+    // Option 1: domaine "nocookie"
+    const USE_NOCOOKIE = true;
+
+    // Option 2: paramètres pour UI plus clean
+    const EMBED_PARAMS = new URLSearchParams({
+      rel: "0",              // limite les suggestions (comportement YouTube actuel: surtout fin de vidéo)
+      modestbranding: "1",   // branding plus discret
+      playsinline: "1"       // lecture inline (mobile)
+      // NOTE: pas de "autoplay" ici (souvent intrusif)
+    });
 
     let currentVideoId = null;
 
     function extractVideoId(url) {
       if (!url) return null;
-
       const s = String(url).trim();
 
+      // ID direct (11 chars)
       if (/^[a-zA-Z0-9_-]{11}$/.test(s)) return s;
 
-      let m =
+      // watch?v=ID, youtu.be/ID, /embed/ID
+      const m =
         s.match(/[?&]v=([a-zA-Z0-9_-]{11})/) ||
         s.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/) ||
         s.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
@@ -55,50 +65,46 @@
       return m ? m[1] : null;
     }
 
-    function render(videoId) {
-      const embed =
-        `https://www.youtube-nocookie.com/embed/${videoId}`;
+    function buildEmbedUrl(videoId) {
+      const base = USE_NOCOOKIE
+        ? "https://www.youtube-nocookie.com/embed/"
+        : "https://www.youtube.com/embed/";
 
+      return `${base}${videoId}?${EMBED_PARAMS.toString()}`;
+    }
+
+    function render(videoId) {
+      const src = buildEmbedUrl(videoId);
       document.getElementById("wrap").innerHTML = `
         <iframe
-          src="${embed}"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          src="${src}"
+          allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowfullscreen>
         </iframe>`;
     }
 
     async function refresh() {
       try {
-        const res = await fetch(
-          LATEST_JSON + "?t=" + Date.now(),
-          { cache: "no-store" }
-        );
+        const res = await fetch(LATEST_JSON + "?t=" + Date.now(), { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
 
         const data = await res.json();
-
-        const videoId =
-          extractVideoId(data.url);
-
+        const videoId = extractVideoId(data.url);
         if (!videoId) return;
 
-        if (videoId === currentVideoId)
-          return;
+        // Si la vidéo n'a pas changé, on ne relance pas le player
+        if (videoId === currentVideoId) return;
 
         currentVideoId = videoId;
-
         render(videoId);
 
       } catch (e) {
-        console.error(
-          "Erreur chargement latest.json",
-          e
-        );
+        console.error("Erreur chargement latest.json:", e);
       }
     }
 
     refresh();
     setInterval(refresh, REFRESH_MS);
   </script>
-
 </body>
 </html>
