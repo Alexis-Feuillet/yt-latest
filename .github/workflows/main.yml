@@ -1,35 +1,56 @@
 name: Update latest YouTube JSON
 
 on:
+  # Lance automatiquement toutes les 30 minutes
   schedule:
-    - cron: "*/30 * * * *"   # toutes les 30 minutes
-  workflow_dispatch:        # permet de lancer manuellement
+    - cron: "*/30 * * * *"
+
+  # Permet de le lancer à la main (bouton "Run workflow")
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   update:
     runs-on: ubuntu-latest
 
     steps:
-      # 1) Récupère le repo
+      # 1) Récupère le contenu du repo (obligatoire pour modifier/commit des fichiers)
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2) Appelle ton Apps Script et remplace latest.json
-      - name: Fetch JSON from Apps Script
+      # 2) Télécharge le JSON depuis ton Apps Script
+      # IMPORTANT: -L suit les redirections Google (sinon tu récupères "Moved Temporarily" en HTML)
+      - name: Download latest.json from Apps Script
         run: |
           set -e
-          curl -sS "https://script.google.com/macros/s/AKfycbwir5H8_B9BmSouM26WWoh9sxTIQGy8tU8ZfWM7mVZT8aFWuQq8vilmweyh83IxBYx_eQ/exec" \
-            -H "Accept: application/json" \
-            -o latest.json
 
-      # 3) Commit si le fichier a changé
-      - name: Commit changes if needed
+          APPS_SCRIPT_URL="https://script.google.com/macros/s/AKfycbwir5H8_B9BmSouM26WWoh9sxTIQGy8tU8ZfWM7mVZT8aFWuQq8vilmweyh83IxBYx_eQ/exec"
+
+          echo "Downloading from: $APPS_SCRIPT_URL"
+          curl -LfsS "$APPS_SCRIPT_URL" -o latest.json
+
+          echo "Downloaded file size:"
+          wc -c latest.json
+
+      # 3) Vérifie que c'est bien du JSON (et pas une page HTML "Moved Temporarily")
+      - name: Validate JSON
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          node -e "JSON.parse(require('fs').readFileSync('latest.json','utf8')); console.log('✅ JSON OK');"
 
+      # 4) Commit + push seulement si le fichier a changé
+      - name: Commit and push if changed
+        run: |
+          set -e
+
+          # Configure l'identité du bot GitHub Actions
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Si rien n'a changé, on sort (évite des commits inutiles)
           if git diff --quiet; then
-            echo "No changes detected."
+            echo "No changes to commit."
             exit 0
           fi
 
