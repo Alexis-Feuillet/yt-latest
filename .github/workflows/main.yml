@@ -1,0 +1,38 @@
+name: Update latest YouTube JSON
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # toutes les 30 minutes
+  workflow_dispatch:        # permet de lancer manuellement
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1) Récupère le repo
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2) Appelle ton Apps Script et remplace latest.json
+      - name: Fetch JSON from Apps Script
+        run: |
+          set -e
+          curl -sS "https://script.google.com/macros/s/AKfycbwir5H8_B9BmSouM26WWoh9sxTIQGy8tU8ZfWM7mVZT8aFWuQq8vilmweyh83IxBYx_eQ/exec" \
+            -H "Accept: application/json" \
+            -o latest.json
+
+      # 3) Commit si le fichier a changé
+      - name: Commit changes if needed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git diff --quiet; then
+            echo "No changes detected."
+            exit 0
+          fi
+
+          git add latest.json
+          git commit -m "Auto update latest.json"
+          git push
