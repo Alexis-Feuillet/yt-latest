@@ -17,6 +17,7 @@
       position: relative;
       width: 100%;
       aspect-ratio: 16 / 9;
+      background: #000;
     }
 
     iframe {
@@ -27,18 +28,18 @@
       border: 0;
     }
 
-    /* Fallback miniature */
-    .thumb {
+    /* Miniature fallback */
+    img.thumb {
       position: absolute;
       inset: 0;
       width: 100%;
       height: 100%;
-      object-fit: cover;     /* Remplit sans bandes noires */
+      object-fit: cover; /* Remplit sans bandes noires */
       display: block;
-      background: #000;
+      border: 0;
     }
 
-    /* Petit overlay “play” (discret) pendant le chargement */
+    /* Overlay play discret */
     .playOverlay {
       position: absolute;
       inset: 0;
@@ -80,7 +81,7 @@
     // Refresh automatique (30 min)
     const REFRESH_MS = 30 * 60 * 1000;
 
-    // Domaine privacy-enhanced + paramètres UI clean (ce qui t'a supprimé pubs/overlays chez toi)
+    // Domaine privacy-enhanced + paramètres UI clean
     const USE_NOCOOKIE = true;
     const EMBED_PARAMS = new URLSearchParams({
       rel: "0",
@@ -94,8 +95,10 @@
       if (!url) return null;
       const s = String(url).trim();
 
+      // ID direct (11 chars)
       if (/^[a-zA-Z0-9_-]{11}$/.test(s)) return s;
 
+      // watch?v=ID, youtu.be/ID, /embed/ID
       const m =
         s.match(/[?&]v=([a-zA-Z0-9_-]{11})/) ||
         s.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/) ||
@@ -108,13 +111,12 @@
       const base = USE_NOCOOKIE
         ? "https://www.youtube-nocookie.com/embed/"
         : "https://www.youtube.com/embed/";
-
       return `${base}${videoId}?${EMBED_PARAMS.toString()}`;
     }
 
-    function thumbUrl(videoId, quality) {
-      // quality: "maxresdefault" ou "hqdefault"
-      return `https://i.ytimg.com/vi/${videoId}/${quality}.jpg`;
+    // Miniature standard (fiable) : hqdefault (évite le placeholder gris de maxresdefault)
+    function buildThumbUrl(videoId) {
+      return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
     }
 
     function renderThumbThenPlayer(videoId) {
@@ -122,20 +124,9 @@
 
       // 1) Affiche la miniature immédiatement
       wrap.innerHTML = `
-        <img class="thumb" id="thumb" alt="Miniature vidéo YouTube"
-             src="${thumbUrl(videoId, "maxresdefault")}" />
-        <div class="playOverlay">
-          <div class="playIcon"></div>
-        </div>
+        <img class="thumb" alt="Miniature vidéo YouTube" src="${buildThumbUrl(videoId)}" />
+        <div class="playOverlay"><div class="playIcon"></div></div>
       `;
-
-      const img = document.getElementById("thumb");
-
-      // Si la miniature HD n'existe pas, on bascule sur la standard
-      img.onerror = () => {
-        img.onerror = null;
-        img.src = thumbUrl(videoId, "hqdefault");
-      };
 
       // 2) Prépare l’iframe et ne remplace la miniature que quand elle est chargée
       const iframe = document.createElement("iframe");
@@ -143,7 +134,6 @@
       iframe.allow = "accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
       iframe.allowFullscreen = true;
 
-      // Remplacement dès que l’iframe est prête (réduit l’écran noir)
       iframe.addEventListener("load", () => {
         wrap.innerHTML = "";
         wrap.appendChild(iframe);
