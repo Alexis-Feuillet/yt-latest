@@ -11,61 +11,17 @@
       padding: 0;
       background: transparent;
     }
-
-    /* Neutre : le design (marges/arrondis) reste côté Systeme.io */
     .wrap {
       position: relative;
       width: 100%;
       aspect-ratio: 16 / 9;
     }
-
     iframe {
       position: absolute;
       inset: 0;
       width: 100%;
       height: 100%;
       border: 0;
-    }
-
-    /* Fallback miniature */
-    .thumb {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;     /* Remplit sans bandes noires */
-      display: block;
-      background: #000;
-    }
-
-    /* Petit overlay “play” (discret) pendant le chargement */
-    .playOverlay {
-      position: absolute;
-      inset: 0;
-      display: grid;
-      place-items: center;
-      pointer-events: none;
-    }
-
-    .playIcon {
-      width: 64px;
-      height: 64px;
-      border-radius: 999px;
-      background: rgba(0,0,0,0.55);
-      display: grid;
-      place-items: center;
-      backdrop-filter: blur(2px);
-    }
-
-    .playIcon:before {
-      content: "";
-      display: block;
-      margin-left: 4px;
-      width: 0;
-      height: 0;
-      border-left: 18px solid #fff;
-      border-top: 11px solid transparent;
-      border-bottom: 11px solid transparent;
     }
   </style>
 </head>
@@ -74,18 +30,21 @@
   <div class="wrap" id="wrap"></div>
 
   <script>
-    // Source JSON
+    // Source du JSON (GitHub Pages)
     const LATEST_JSON = "https://alexis-feuillet.github.io/yt-latest/latest.json";
 
     // Refresh automatique (30 min)
     const REFRESH_MS = 30 * 60 * 1000;
 
-    // Domaine privacy-enhanced + paramètres UI clean (ce qui t'a supprimé pubs/overlays chez toi)
+    // Option 1: domaine "nocookie"
     const USE_NOCOOKIE = true;
+
+    // Option 2: paramètres pour UI plus clean
     const EMBED_PARAMS = new URLSearchParams({
-      rel: "0",
-      modestbranding: "1",
-      playsinline: "1"
+      rel: "0",              // limite les suggestions (comportement YouTube actuel: surtout fin de vidéo)
+      modestbranding: "1",   // branding plus discret
+      playsinline: "1"       // lecture inline (mobile)
+      // NOTE: pas de "autoplay" ici (souvent intrusif)
     });
 
     let currentVideoId = null;
@@ -94,8 +53,10 @@
       if (!url) return null;
       const s = String(url).trim();
 
+      // ID direct (11 chars)
       if (/^[a-zA-Z0-9_-]{11}$/.test(s)) return s;
 
+      // watch?v=ID, youtu.be/ID, /embed/ID
       const m =
         s.match(/[?&]v=([a-zA-Z0-9_-]{11})/) ||
         s.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/) ||
@@ -112,44 +73,14 @@
       return `${base}${videoId}?${EMBED_PARAMS.toString()}`;
     }
 
-    function thumbUrl(videoId, quality) {
-      // quality: "maxresdefault" ou "hqdefault"
-      return `https://i.ytimg.com/vi/${videoId}/${quality}.jpg`;
-    }
-
-    function renderThumbThenPlayer(videoId) {
-      const wrap = document.getElementById("wrap");
-
-      // 1) Affiche la miniature immédiatement
-      wrap.innerHTML = `
-        <img class="thumb" id="thumb" alt="Miniature vidéo YouTube"
-             src="${thumbUrl(videoId, "maxresdefault")}" />
-        <div class="playOverlay">
-          <div class="playIcon"></div>
-        </div>
-      `;
-
-      const img = document.getElementById("thumb");
-
-      // Si la miniature HD n'existe pas, on bascule sur la standard
-      img.onerror = () => {
-        img.onerror = null;
-        img.src = thumbUrl(videoId, "hqdefault");
-      };
-
-      // 2) Prépare l’iframe et ne remplace la miniature que quand elle est chargée
-      const iframe = document.createElement("iframe");
-      iframe.src = buildEmbedUrl(videoId);
-      iframe.allow = "accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
-      iframe.allowFullscreen = true;
-
-      // Remplacement dès que l’iframe est prête (réduit l’écran noir)
-      iframe.addEventListener("load", () => {
-        wrap.innerHTML = "";
-        wrap.appendChild(iframe);
-      });
-
-      // En cas d’échec de load (rare), on garde la miniature (fallback)
+    function render(videoId) {
+      const src = buildEmbedUrl(videoId);
+      document.getElementById("wrap").innerHTML = `
+        <iframe
+          src="${src}"
+          allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          allowfullscreen>
+        </iframe>`;
     }
 
     async function refresh() {
@@ -161,10 +92,11 @@
         const videoId = extractVideoId(data.url);
         if (!videoId) return;
 
+        // Si la vidéo n'a pas changé, on ne relance pas le player
         if (videoId === currentVideoId) return;
 
         currentVideoId = videoId;
-        renderThumbThenPlayer(videoId);
+        render(videoId);
 
       } catch (e) {
         console.error("Erreur chargement latest.json:", e);
